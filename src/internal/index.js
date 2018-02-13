@@ -2,7 +2,7 @@
 import connect from '../lib/websocket.js';
 import * as commands from '../commands/index.js';
 
-const TOUCH_SENSITIVITY_LEVEL = 4;
+const TOUCH_SENSITIVITY_LEVEL = 5;
 
 const delay = (delayMs = 0) =>
   new Promise(resolve => setTimeout(resolve, delayMs));
@@ -57,6 +57,12 @@ const actions = {
     await commands.remove(sampleId);
     dispatch('REMOVED');
   },
+  capTouchSetSensitivty: (dispatch, { ws }) =>
+    ws.send('Capacitive/cap/sensitivity', {
+      params: { level: TOUCH_SENSITIVITY_LEVEL },
+    }),
+  capTouchReset: (dispatch, { ws }) =>
+    ws.send('Capacitive/cap/resetRequest', {}),
 };
 
 const actionForMessage = ws => async (topic, payload) => {
@@ -69,6 +75,7 @@ const actionForMessage = ws => async (topic, payload) => {
       break;
     case 'LOAD':
       actions.load(dispatch);
+      actions.capTouchReset(dispatch, { ws });
       dispatch('SYNC');
       break;
     case 'RECORD':
@@ -91,6 +98,10 @@ const actionForMessage = ws => async (topic, payload) => {
       await actions.toggleLoop(dispatch, payload);
       dispatch('SYNC');
       break;
+    // On reset, set the sensitivity
+    case 'Capacitive/cap/reset':
+      actions.capTouchSetSensitivty(dispatch, { ws });
+      break;
     default:
       console.warn('Action handler for ', topic, ' not found');
   }
@@ -100,21 +111,6 @@ const init = async () => {
   console.log('init internal');
   const ws = await connect();
   const actionHandler = actionForMessage(ws);
-
-  // Reset the touch board
-  ws.send(
-    JSON.stringify({
-      topic: 'Capacitive/cap/resetRequest',
-      payload: {},
-    }),
-  );
-
-  ws.send(
-    JSON.stringify({
-      topic: 'Capacitive/cap/sensitivity',
-      payload: { params: { level: TOUCH_SENSITIVITY_LEVEL } },
-    }),
-  );
 
   ws.addEventListener('message', ({ topic, payload }) =>
     actionHandler(topic, payload),
